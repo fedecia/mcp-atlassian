@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Annotated
 
 from fastmcp import Context, FastMCP
@@ -82,30 +83,52 @@ async def search(
         JSON string representing a list of simplified Confluence page objects.
     """
     confluence_fetcher = await get_confluence_fetcher(ctx)
-    # Check if the query is a simple search term or already a CQL query
-    if query and not any(
-        x in query for x in ["=", "~", ">", "<", " AND ", " OR ", "currentUser()"]
-    ):
+
+    # Check if the query is valid CQL (has field operators like field=, field~, etc.)
+    # Valid CQL has patterns like: "field=value", "field~value", "field >", etc.
+    is_valid_cql = bool(re.search(r"\b\w+\s*[=~><]", query)) if query else False
+
+    if query and not is_valid_cql:
         original_query = query
-        try:
-            query = f'siteSearch ~ "{original_query}"'
-            logger.info(
-                f"Converting simple search term to CQL using siteSearch: {query}"
-            )
-            pages = confluence_fetcher.search(
-                query, limit=limit, spaces_filter=spaces_filter
-            )
-        except Exception as e:
-            logger.warning(f"siteSearch failed ('{e}'), falling back to text search.")
-            query = f'text ~ "{original_query}"'
-            logger.info(f"Falling back to text search with CQL: {query}")
-            pages = confluence_fetcher.search(
-                query, limit=limit, spaces_filter=spaces_filter
-            )
-    else:
-        pages = confluence_fetcher.search(
-            query, limit=limit, spaces_filter=spaces_filter
-        )
+
+        # Handle user-friendly OR/AND syntax by converting to proper CQL
+        # e.g., '"term1" OR term2' -> 'text ~ "term1" OR text ~ "term2"'
+        if " OR " in query or " AND " in query:
+            # Split by OR/AND while preserving the operators
+            parts = re.split(r"(\s+(?:OR|AND)\s+)", query)
+            cql_parts = []
+            for part in parts:
+                part = part.strip()
+                if part in ("OR", "AND"):
+                    cql_parts.append(part)
+                elif part:
+                    # Remove surrounding quotes if present for the text~ query
+                    clean_part = part.strip('"').strip("'")
+                    cql_parts.append(f'text ~ "{clean_part}"')
+            query = " ".join(cql_parts)
+            logger.info(f"Converted boolean query to CQL: {query}")
+        else:
+            # Simple single-term query
+            # Strip outer quotes if user already wrapped their query
+            clean_query = original_query.strip('"').strip("'")
+            try:
+                query = f'siteSearch ~ "{clean_query}"'
+                logger.info(
+                    f"Converting simple search term to CQL using siteSearch: {query}"
+                )
+                pages = confluence_fetcher.search(
+                    query, limit=limit, spaces_filter=spaces_filter
+                )
+                search_results = [page.to_simplified_dict() for page in pages]
+                return json.dumps(search_results, indent=2, ensure_ascii=False)
+            except Exception as e:
+                logger.warning(
+                    f"siteSearch failed ('{e}'), falling back to text search."
+                )
+                query = f'text ~ "{clean_query}"'
+                logger.info(f"Falling back to text search with CQL: {query}")
+
+    pages = confluence_fetcher.search(query, limit=limit, spaces_filter=spaces_filter)
     search_results = [page.to_simplified_dict() for page in pages]
     return json.dumps(search_results, indent=2, ensure_ascii=False)
 

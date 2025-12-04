@@ -60,8 +60,12 @@ class SearchMixin(ConfluenceClient):
 
             logger.info(f"Applied spaces filter to query: {cql}")
 
-        # Execute the CQL search query
-        results = self.confluence.cql(cql=cql, limit=limit)
+        # Execute the CQL search query with history expansion for dates and author
+        results = self.confluence.cql(
+            cql=cql,
+            limit=limit,
+            expand="content.history,content.history.lastUpdated,content.space,content.version",
+        )
 
         # Convert the response to a search result model
         search_result = ConfluenceSearchResult.from_api_response(
