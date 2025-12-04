@@ -259,6 +259,15 @@ class ConfluencePage(ApiModel, TimestampMixin):
         # Add version information if available
         if self.version:
             result["version"] = self.version.number
+            # Add last editor if available and different from author
+            if self.version.by:
+                last_editor = {
+                    "display_name": self.version.by.display_name,
+                    "username": self.version.by.username,
+                }
+                # Only include if different from author
+                if not self.author or self.version.by.username != self.author.username:
+                    result["last_editor"] = last_editor
 
         # Add attachments if available
         result["attachments"] = [
