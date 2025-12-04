@@ -22,6 +22,7 @@ class ConfluenceUser(ApiModel):
     """
 
     account_id: str | None = None
+    username: str | None = None  # Server: often the AD/LDAP username
     display_name: str = UNASSIGNED
     email: str | None = None
     profile_picture: str | None = None
@@ -56,15 +57,31 @@ class ConfluenceUser(ApiModel):
         if not data:
             return cls()
 
+        # Debug: log all keys to find email field
+        logger.debug(f"ConfluenceUser raw data keys: {list(data.keys())}")
+
         profile_pic = None
         if pic_data := data.get("profilePicture"):
             # Use the full path to the profile picture
             profile_pic = pic_data.get("path")
 
+        # Try multiple possible email field names (Cloud vs Server)
+        email = data.get("email") or data.get("emailAddress")
+
+        # For Server: try to extract from username if it looks like an email
+        if not email:
+            username = data.get("username", "")
+            if "@" in username:
+                email = username
+
+        # Get username (Server uses 'username', Cloud uses 'accountId')
+        username = data.get("username") or data.get("name")
+
         return cls(
             account_id=data.get("accountId"),
+            username=username,
             display_name=data.get("displayName", UNASSIGNED),
-            email=data.get("email"),
+            email=email,
             profile_picture=profile_pic,
             is_active=data.get("accountStatus") == "active",
             locale=data.get("locale"),
@@ -74,6 +91,7 @@ class ConfluenceUser(ApiModel):
         """Convert to simplified dictionary for API response."""
         return {
             "display_name": self.display_name,
+            "username": self.username,
             "email": self.email,
             "profile_picture": self.profile_picture,
         }

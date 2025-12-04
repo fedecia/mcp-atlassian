@@ -162,11 +162,6 @@ class ConfluencePage(ApiModel, TimestampMixin):
         if not convert_to_markdown:
             content_format = "html"
 
-        # Process author/creator
-        author = None
-        if author_data := data.get("author"):
-            author = ConfluenceUser.from_api_response(author_data)
-
         # Process version
         version = None
         if version_data := data.get("version"):
@@ -184,17 +179,26 @@ class ConfluencePage(ApiModel, TimestampMixin):
                 for attachment in attachments_data
             ]
 
-        # Process metadata timestamps
+        # Process metadata timestamps and author from history
         created = EMPTY_STRING
         updated = EMPTY_STRING
+        author = None
 
         if history := data.get("history"):
             created = history.get("createdDate", EMPTY_STRING)
             updated = history.get("lastUpdated", {}).get("when", EMPTY_STRING)
 
+            # Extract author/creator from history.createdBy
+            if created_by := history.get("createdBy"):
+                author = ConfluenceUser.from_api_response(created_by)
+
             # Fall back to version date if no history is available
             if not updated and version and version.when:
                 updated = version.when
+
+        # Fallback: check for author at top level (some API responses)
+        if not author and (author_data := data.get("author")):
+            author = ConfluenceUser.from_api_response(author_data)
 
         # Construct URL if base_url is provided
         url = None
@@ -246,7 +250,11 @@ class ConfluencePage(ApiModel, TimestampMixin):
 
         # Add author information if available
         if self.author:
-            result["author"] = self.author.display_name
+            result["author"] = {
+                "display_name": self.author.display_name,
+                "username": self.author.username,
+                "email": self.author.email,
+            }
 
         # Add version information if available
         if self.version:

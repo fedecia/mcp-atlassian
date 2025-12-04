@@ -56,7 +56,7 @@ class PagesMixin(ConfluenceClient):
                 )
                 page = v2_adapter.get_page(
                     page_id=page_id,
-                    expand="body.storage,version,space,children.attachment",
+                    expand="body.storage,version,space,children.attachment,history,history.lastUpdated",
                 )
             else:
                 logger.debug(
@@ -64,7 +64,7 @@ class PagesMixin(ConfluenceClient):
                 )
                 page = self.confluence.get_page_by_id(
                     page_id=page_id,
-                    expand="body.storage,version,space,children.attachment",
+                    expand="body.storage,version,space,children.attachment,history,history.lastUpdated",
                 )
 
             space_key = page.get("space", {}).get("key", "")
@@ -179,7 +179,9 @@ class PagesMixin(ConfluenceClient):
         try:
             # Directly try to find the page by title
             page = self.confluence.get_page_by_title(
-                space=space_key, title=title, expand="body.storage,version"
+                space=space_key,
+                title=title,
+                expand="body.storage,version,history,history.lastUpdated",
             )
 
             if not page:
@@ -251,7 +253,10 @@ class PagesMixin(ConfluenceClient):
             List of ConfluencePage models containing page content and metadata
         """
         pages = self.confluence.get_all_pages_from_space(
-            space=space_key, start=start, limit=limit, expand="body.storage"
+            space=space_key,
+            start=start,
+            limit=limit,
+            expand="body.storage,history,history.lastUpdated",
         )
 
         page_models = []
@@ -464,7 +469,7 @@ class PagesMixin(ConfluenceClient):
         page_id: str,
         start: int = 0,
         limit: int = 25,
-        expand: str = "version",
+        expand: str = "version,history,history.lastUpdated",
         *,
         convert_to_markdown: bool = True,
     ) -> list[ConfluencePage]:
